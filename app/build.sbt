@@ -6,6 +6,8 @@ val V = new {
   val http4sScalatags = "0.25.2"
 
   val scalatags = "0.12.0"
+
+  val scribe = "3.13.2"
 }
 
 scalaVersion := V.scala
@@ -17,6 +19,7 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-ember-server" % V.http4s,
   "org.http4s" %% "http4s-ember-client" % V.http4s,
   "org.http4s" %% "http4s-scalatags"    % V.http4sScalatags,
+  "com.outr"   %% "scribe-slf4j"        % V.scribe,
   "com.disneystreaming.smithy4s" %% "smithy4s-aws-http4s" % smithy4sVersion.value,
   "com.lihaoyi" %% "scalatags" % V.scalatags
 )

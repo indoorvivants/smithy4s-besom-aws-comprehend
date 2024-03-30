@@ -12,7 +12,7 @@ import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 import org.http4s.UrlForm
 
-object Main extends IOApp.Simple:
+object Server extends IOApp.Simple:
 
   def run =
     httpServer.use: server =>
@@ -66,7 +66,7 @@ object Main extends IOApp.Simple:
     }
   end routes
 
-end Main
+end Server
 
 object Html:
   import scalatags.Text.all.*
@@ -74,8 +74,12 @@ object Html:
   def template(contents: TypedTag[String]) =
     html(
       body(
-        h1("Hello Besom and Smithy4s!"),
-        contents
+        cls := "h-14 bg-gradient-to-r from-cyan-800 to-blue-800 p-8 w-full flex justify-center",
+        div(
+          cls := "container",
+          h1(cls  := "text-8xl text-white m-4", "Hello Besom and Smithy4s!"),
+          div(cls := "rounded-lg p-4 bg-slate-100", contents)
+        )
       ),
       script(src := "https://unpkg.com/htmx.org@1.9.11"),
       script(src := "https://cdn.tailwindcss.com")
@@ -84,11 +88,33 @@ object Html:
 
   val userInput =
     div(
-      form(
-        textarea(placeholder := "type here...", name  := "text"),
-        button(hx.post       := "/analyse", hx.target := "#result", "Analyse")
+      p(
+        "This is a toy service that analyses text sentiment by calling ",
+        a(
+          href := "https://docs.aws.amazon.com/comprehend/latest/dg/what-is.html",
+          "AWS Comprehend"
+        ),
+        " service."
       ),
-      div(id := "result")
+      form(
+        div(
+          cls := "flex justify-center",
+          textarea(
+            placeholder := "type here...",
+            name        := "text",
+            cls         := "w-6/12 text-lg p-4 m-4"
+          ),
+          div(
+            button(
+              hx.post   := "/analyse",
+              hx.target := "#result",
+              "Analyse",
+              cls := "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            )
+          )
+        )
+      ),
+      div(cls := "text-xl", "Sentiment: ", span(id := "result", "..."))
     )
   end userInput
 
@@ -103,7 +129,7 @@ object Html:
       case NEUTRAL =>
         "Neutral, stop sitting on a fence all the time" -> "text-sky-600"
       case _ => "No idea" -> "text-slate-600"
-    div(cls := s"text-xl $color", message)
+    span(cls := s"text-xl $color", message)
   end sentiment
 
   /** Helper to create htmx attributes. `hx.replace` will create a `hx-replace`

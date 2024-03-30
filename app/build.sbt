@@ -13,6 +13,7 @@ val V = new {
 scalaVersion := V.scala
 
 enablePlugins(Smithy4sCodegenPlugin)
+enablePlugins(JavaAppPackaging)
 
 libraryDependencies ++= Seq(
   "com.disneystreaming.smithy4s" %% "smithy4s-http4s" % smithy4sVersion.value,
@@ -26,4 +27,8 @@ libraryDependencies ++= Seq(
 // The `AWS` object contains a list of references to artifacts that contain specifications to AWS services.
 smithy4sAwsSpecs ++= Seq(AWS.comprehend)
 
+Compile / doc / sources := Nil
+
 run / fork := true
+
+run / envVars += "SMITHY4S_PORT" -> "8080"

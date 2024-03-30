@@ -1,0 +1,7 @@
+name: besom-smithy4s-kiss
+runtime: scala
+description: Besom and Smithy4s
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: https://github.com/VirtusLab/besom/tree/v0.2.2/templates/aws

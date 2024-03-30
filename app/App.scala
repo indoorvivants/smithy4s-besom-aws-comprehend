@@ -32,7 +32,13 @@ object Server extends IOApp.Simple:
       .flatMap: routes =>
         EmberServerBuilder
           .default[IO]
-          .withPort(port"8080")
+          .withPort(
+            sys.env
+              .get("SMITHY4S_PORT")
+              .flatMap(Port.fromString)
+              .getOrElse(port"8080")
+          )
+          .withHost(host"0.0.0.0")
           .withHttpApp(routes)
           .withShutdownTimeout(0.second)
           .build

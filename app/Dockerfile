@@ -16,5 +16,9 @@ RUN ./sbt stage
 FROM ghcr.io/graalvm/jdk-community:22
 RUN mkdir -p /opt
 COPY --from=builder /app/target/universal/stage /opt/app
+
 ENV SMITHY4S_PORT=80
+
+EXPOSE 80
+
 CMD ["/opt/app/bin/app"]

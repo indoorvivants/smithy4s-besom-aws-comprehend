@@ -88,28 +88,47 @@ object Html:
 
   val userInput =
     div(
-      p(
-        "This is a toy service that analyses text sentiment by calling ",
-        a(
-          href := "https://docs.aws.amazon.com/comprehend/latest/dg/what-is.html",
-          "AWS Comprehend"
-        ),
-        " service."
-      ),
       form(
         div(
-          cls := "flex justify-center",
+          cls := "flex justify-center items-center",
           textarea(
             placeholder := "type here...",
             name        := "text",
-            cls         := "w-6/12 text-lg p-4 m-4"
+            cls         := "w-6/12 text-lg p-4 m-4 border-2 border-slate-800",
+            rows        := "10"
           ),
           div(
+            cls := "space-y-4",
+            p(
+              "This is a toy service that analyses text sentiment by calling ",
+              a(
+                href := "https://docs.aws.amazon.com/comprehend/latest/dg/what-is.html",
+                "AWS Comprehend",
+                cls := "underline"
+              ),
+              " service."
+            ),
+            p(
+              "See the full code in ",
+              a(
+                href := "https://github.com/indoorvivants/smithy4s-besom-aws-comprehend",
+                "Github repository",
+                cls := "underline"
+              )
+            ),
+            p(
+              "You can read more about it in ",
+              a(
+                href := "https://blog.indoorvivants.com/2024-04-05-besom-smithy4s-aws",
+                "my blogpost",
+                cls := "underline"
+              )
+            ),
             button(
               hx.post   := "/analyse",
               hx.target := "#result",
               "Analyse",
-              cls := "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+              cls := "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-xl"
             )
           )
         )

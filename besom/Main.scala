@@ -8,17 +8,20 @@
 import besom.*
 import besom.api.aws, besom.api.awsx, awsx.ecr, awsx.lb, awsx.ecs
 import besom.api.awsx.ecs.inputs.*
-import besom.api.aws.ec2.VpcArgs
-import besom.api.aws.ec2.SubnetArgs
 import besom.api.awsx.lb.ApplicationLoadBalancerArgs
 import besom.api.aws.ecs.inputs.ServiceNetworkConfigurationArgs
+import besom.api.aws.cloudwatch.LogGroupArgs
+import besom.json.*
 
 @main def main = Pulumi.run {
   val repository =
-    ecr.Repository("repo", ecr.RepositoryArgs(forceDelete = true))
+    ecr.Repository(
+      "sentiment-service-repo",
+      ecr.RepositoryArgs(forceDelete = true)
+    )
 
   val image = ecr.Image(
-    "server",
+    "sentiment-service-image",
     ecr.ImageArgs(
       repositoryUrl = repository.url,
       context = p"../app",
@@ -26,89 +29,114 @@ import besom.api.aws.ecs.inputs.ServiceNetworkConfigurationArgs
     )
   )
 
-  val vpc = aws.ec2.Vpc("main", VpcArgs(cidrBlock = "10.0.0.0/24"))
+  val vpc = awsx.ec2.Vpc("sentiment-service-vpc")
 
-  val gateway = vpc
-    .flatMap(_.id)
-    .flatMap: vpc =>
-      aws.ec2.InternetGateway(
-        "gateway"
-      )
+  // val gateway = vpc
+  //   .flatMap(_.id)
+  //   .flatMap: vpc =>
+  //     aws.ec2.InternetGateway(
+  //       "gateway"
+  //     )
 
-  val attachment =
-    aws.ec2.InternetGatewayAttachment(
-      "attachment",
-      aws.ec2.InternetGatewayAttachmentArgs(
-        internetGatewayId = gateway.id,
-        vpcId = vpc.id
-      )
-    )
+  // val routeTable = aws.ec2.RouteTable(
+  //   "sentiment-service-route-table",
+  //   RouteTableArgs(
+  //     routes = List(
+  //       RouteTableRouteArgs(cidrBlock = "0.0.0.0/0", gatewayId = gateway.id)
+  //     ),
+  //     vpcId = vpc.id
+  //   )
+  // )
 
-  val subnet1 = aws.ec2.Subnet(
-    "subnet1",
-    SubnetArgs(
-      vpcId = vpc.id,
-      cidrBlock = "10.0.0.0/25",
-      availabilityZone = "us-east-1a"
-    )
-  )
+  // val attachment =
+  //   aws.ec2.InternetGatewayAttachment(
+  //     "attachment",
+  //     aws.ec2.InternetGatewayAttachmentArgs(
+  //       internetGatewayId = gateway.id,
+  //       vpcId = vpc.id
+  //     )
+  //   )
 
-  val subnet2 = aws.ec2.Subnet(
-    "subnet2",
-    SubnetArgs(
-      vpcId = vpc.id,
-      cidrBlock = "10.0.0.128/25",
-      availabilityZone = "us-east-1b"
-    )
-  )
+  // val subnet1 = aws.ec2.Subnet(
+  //   "subnet1",
+  //   SubnetArgs(
+  //     vpcId = vpc.id,
+  //     cidrBlock = "10.0.0.0/25",
+  //     availabilityZone = "us-east-1a"
+  //   )
+  // )
 
-  val subnetIDs = Output.sequence(List(subnet1, subnet2)).map(_.map(_.id))
+  // val subnet2 = aws.ec2.Subnet(
+  //   "subnet2",
+  //   SubnetArgs(
+  //     vpcId = vpc.id,
+  //     cidrBlock = "10.0.0.128/25",
+  //     availabilityZone = "us-east-1b"
+  //   )
+  // )
+
+  // val subnetIDs = Output.sequence(List(subnet1, subnet2)).map(_.map(_.id))
 
   val loadBalancer = lb.ApplicationLoadBalancer(
-    "lb",
-    ApplicationLoadBalancerArgs(subnetIds = subnetIDs)
+    "sentiment-service-lb",
+    ApplicationLoadBalancerArgs(subnetIds = vpc.publicSubnetIds)
   )
 
-  val cluster = aws.ecs.Cluster("cluster")
+  val cluster = aws.ecs.Cluster("sentiment-service-cluster")
+
+  val logGroup =
+    aws.cloudwatch.LogGroup(
+      "sentiment-service=log-group",
+      LogGroupArgs(retentionInDays = 7, name = "log-group")
+    )
 
   val service =
     image.imageUri.flatMap: im =>
-      ecs.FargateService(
-        "service",
-        ecs.FargateServiceArgs(
-          networkConfiguration = ServiceNetworkConfigurationArgs(
-            subnets = subnetIDs,
-            assignPublicIp = true,
-            securityGroups =
-              loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
-          ),
-          cluster = cluster.arn,
-          taskDefinitionArgs = FargateServiceTaskDefinitionArgs(
-            containers = Map(
-              "sentiment" -> TaskDefinitionContainerDefinitionArgs(
-                image = im,
-                name = "sentiment-service",
-                cpu = 128,
-                memory = 512,
-                essential = true
-                // portMappings = List(
-                //   TaskDefinitionPortMappingArgs(
-                //     containerPort = 8080,
-                //     targetGroup = loadBalancer.defaultTargetGroup
-                //   )
-                // )
+      logGroup.flatMap: lg =>
+        ecs.FargateService(
+          "sentiment-service-fargate",
+          ecs.FargateServiceArgs(
+            networkConfiguration = ServiceNetworkConfigurationArgs(
+              subnets = vpc.publicSubnetIds,
+              assignPublicIp = true,
+              securityGroups =
+                loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
+            ),
+            cluster = cluster.arn,
+            taskDefinitionArgs = FargateServiceTaskDefinitionArgs(
+              containers = Map(
+                "sentiment-service" -> TaskDefinitionContainerDefinitionArgs(
+                  image = im,
+                  name = "sentiment-service",
+                  cpu = 128,
+                  memory = 512,
+                  essential = true,
+                  logConfiguration = TaskDefinitionLogConfigurationArgs(
+                    logDriver = "awslogs",
+                    options = JsObject(
+                      "awslogs-group"         -> JsString("log-group"),
+                      "awslogs-region"        -> JsString("us-east-1"),
+                      "awslogs-stream-prefix" -> JsString("ecs")
+                    )
+                  )
+                  // portMappings = List(
+                  //   TaskDefinitionPortMappingArgs(
+                  //     containerPort = 80,
+                  //     hostPort = 80,
+                  //     targetGroup = lb.defaultTargetGroup
+                  //   )
+                  // )
+                )
               )
             )
           )
         )
-      )
 
-  Stack(attachment).exports(
+  Stack.exports(
     image = image.imageUri,
-    service = service.id,
+    service = service,
     vpc = vpc.id,
     cluster = cluster.id,
-    url = p"http://${loadBalancer.loadBalancer.dnsName}",
-    gw = gateway
+    url = p"http://${loadBalancer.loadBalancer.dnsName}"
   )
 }

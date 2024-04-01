@@ -91,48 +91,47 @@ import besom.json.*
     )
 
   val service =
-    image.imageUri.flatMap: im =>
-      logGroup.flatMap: lg =>
-        ecs.FargateService(
-          "sentiment-service-fargate",
-          ecs.FargateServiceArgs(
-            networkConfiguration = ServiceNetworkConfigurationArgs(
-              subnets = vpc.publicSubnetIds,
-              assignPublicIp = true,
-              securityGroups =
-                loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
-            ),
-            cluster = cluster.arn,
-            taskDefinitionArgs = FargateServiceTaskDefinitionArgs(
-              containers = Map(
-                "sentiment-service" -> TaskDefinitionContainerDefinitionArgs(
-                  image = im,
-                  name = "sentiment-service",
-                  cpu = 128,
-                  memory = 512,
-                  essential = true,
-                  logConfiguration = TaskDefinitionLogConfigurationArgs(
-                    logDriver = "awslogs",
-                    options = JsObject(
-                      "awslogs-group"         -> JsString("log-group"),
-                      "awslogs-region"        -> JsString("us-east-1"),
-                      "awslogs-stream-prefix" -> JsString("ecs")
-                    )
+    image.imageUri.flatMap: image =>
+      ecs.FargateService(
+        "sentiment-service-fargate",
+        ecs.FargateServiceArgs(
+          networkConfiguration = ServiceNetworkConfigurationArgs(
+            subnets = vpc.publicSubnetIds,
+            assignPublicIp = true,
+            securityGroups =
+              loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
+          ),
+          cluster = cluster.arn,
+          taskDefinitionArgs = FargateServiceTaskDefinitionArgs(
+            containers = Map(
+              "sentiment-service" -> TaskDefinitionContainerDefinitionArgs(
+                image = image,
+                name = "sentiment-service",
+                cpu = 128,
+                memory = 512,
+                essential = true,
+                logConfiguration = TaskDefinitionLogConfigurationArgs(
+                  logDriver = "awslogs",
+                  options = JsObject(
+                    "awslogs-group"         -> JsString("log-group"),
+                    "awslogs-region"        -> JsString("us-east-1"),
+                    "awslogs-stream-prefix" -> JsString("ecs")
                   )
-                  // portMappings = List(
-                  //   TaskDefinitionPortMappingArgs(
-                  //     containerPort = 80,
-                  //     hostPort = 80,
-                  //     targetGroup = lb.defaultTargetGroup
-                  //   )
-                  // )
                 )
+                // portMappings = List(
+                //   TaskDefinitionPortMappingArgs(
+                //     containerPort = 80,
+                //     hostPort = 80,
+                //     targetGroup = lb.defaultTargetGroup
+                //   )
+                // )
               )
             )
           )
         )
+      )
 
-  Stack.exports(
+  Stack(logGroup).exports(
     image = image.imageUri,
     service = service,
     vpc = vpc.id,

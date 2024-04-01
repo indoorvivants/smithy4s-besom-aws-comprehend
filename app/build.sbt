@@ -21,6 +21,7 @@ libraryDependencies ++= Seq(
   "org.http4s" %% "http4s-ember-client" % V.http4s,
   "org.http4s" %% "http4s-scalatags"    % V.http4sScalatags,
   "com.outr"   %% "scribe-slf4j"        % V.scribe,
+  "com.outr"   %% "scribe-cats"         % V.scribe,
   "com.disneystreaming.smithy4s" %% "smithy4s-aws-http4s" % smithy4sVersion.value,
   "com.lihaoyi" %% "scalatags" % V.scalatags
 )

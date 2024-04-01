@@ -11,19 +11,43 @@ import org.http4s.scalatags.*
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 import org.http4s.UrlForm
+import cats.syntax.all.*
 
 object Server extends IOApp.Simple:
 
   def run =
-    httpServer.use: server =>
+    (printEnv *> httpServer).use: server =>
       IO.println(s"Running at: ${server.baseUri}") *>
         IO.never
+
+  def printEnv =
+    std
+      .Env[IO]
+      .entries
+      .flatMap: entries =>
+        entries
+          .filter(_._1.startsWith("AWS_"))
+          .toList
+          .traverse: entry =>
+            scribe.cats.io.info(s"Env: ${entry._1} = ${entry._2}")
+      .toResource
+      .void
 
   def comprehend: Resource[IO, Comprehend[IO]] =
     for
       httpClient <- EmberClientBuilder.default[IO].build
-      awsEnv     <- AwsEnvironment.default(httpClient, AwsRegion.EU_CENTRAL_1)
-      service    <- AwsClient(Comprehend, awsEnv)
+      provider = new AwsCredentialsProvider[IO]
+      awsEnv <-
+        provider
+          .refreshing(provider.fromECS(httpClient, 3.second))
+          .map: cred =>
+            AwsEnvironment.make(
+              httpClient,
+              IO.pure(AwsRegion.US_EAST_1),
+              cred,
+              IO.realTime.map(_.toSeconds).map(Timestamp(_, 0))
+            )
+      service <- AwsClient(Comprehend, awsEnv)
     yield service
 
   def httpServer =

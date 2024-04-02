@@ -31,52 +31,6 @@ import besom.json.*
 
   val vpc = awsx.ec2.Vpc("sentiment-service-vpc")
 
-  // val gateway = vpc
-  //   .flatMap(_.id)
-  //   .flatMap: vpc =>
-  //     aws.ec2.InternetGateway(
-  //       "gateway"
-  //     )
-
-  // val routeTable = aws.ec2.RouteTable(
-  //   "sentiment-service-route-table",
-  //   RouteTableArgs(
-  //     routes = List(
-  //       RouteTableRouteArgs(cidrBlock = "0.0.0.0/0", gatewayId = gateway.id)
-  //     ),
-  //     vpcId = vpc.id
-  //   )
-  // )
-
-  // val attachment =
-  //   aws.ec2.InternetGatewayAttachment(
-  //     "attachment",
-  //     aws.ec2.InternetGatewayAttachmentArgs(
-  //       internetGatewayId = gateway.id,
-  //       vpcId = vpc.id
-  //     )
-  //   )
-
-  // val subnet1 = aws.ec2.Subnet(
-  //   "subnet1",
-  //   SubnetArgs(
-  //     vpcId = vpc.id,
-  //     cidrBlock = "10.0.0.0/25",
-  //     availabilityZone = "us-east-1a"
-  //   )
-  // )
-
-  // val subnet2 = aws.ec2.Subnet(
-  //   "subnet2",
-  //   SubnetArgs(
-  //     vpcId = vpc.id,
-  //     cidrBlock = "10.0.0.128/25",
-  //     availabilityZone = "us-east-1b"
-  //   )
-  // )
-
-  // val subnetIDs = Output.sequence(List(subnet1, subnet2)).map(_.map(_.id))
-
   val loadBalancer = lb.ApplicationLoadBalancer(
     "sentiment-service-lb",
     ApplicationLoadBalancerArgs(subnetIds = vpc.publicSubnetIds)
@@ -86,7 +40,7 @@ import besom.json.*
 
   val logGroup =
     aws.cloudwatch.LogGroup(
-      "sentiment-service=log-group",
+      "sentiment-service-log-group",
       LogGroupArgs(retentionInDays = 7, name = "log-group")
     )
 
@@ -117,14 +71,12 @@ import besom.json.*
                     "awslogs-region"        -> JsString("us-east-1"),
                     "awslogs-stream-prefix" -> JsString("ecs")
                   )
+                ),
+                portMappings = List(
+                  TaskDefinitionPortMappingArgs(
+                    targetGroup = loadBalancer.defaultTargetGroup
+                  )
                 )
-                // portMappings = List(
-                //   TaskDefinitionPortMappingArgs(
-                //     containerPort = 80,
-                //     hostPort = 80,
-                //     targetGroup = lb.defaultTargetGroup
-                //   )
-                // )
               )
             )
           )

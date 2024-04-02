@@ -14,39 +14,43 @@ import org.http4s.UrlForm
 import cats.syntax.all.*
 
 object Server extends IOApp.Simple:
+  
+  val AWS_REGION = AwsRegion.US_EAST_1
 
   def run =
-    (printEnv *> httpServer).use: server =>
+    httpServer.use: server =>
       IO.println(s"Running at: ${server.baseUri}") *>
         IO.never
 
-  def printEnv =
+  def awsEnvironment(
+      httpClient: org.http4s.client.Client[IO]
+  ): Resource[IO, AwsEnvironment[IO]] =
     std
       .Env[IO]
-      .entries
-      .flatMap: entries =>
-        entries
-          .filter(_._1.startsWith("AWS_"))
-          .toList
-          .traverse: entry =>
-            scribe.cats.io.info(s"Env: ${entry._1} = ${entry._2}")
+      .get("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")
       .toResource
-      .void
+      .flatMap:
+        case None =>
+          AwsEnvironment.default[IO](httpClient, AWS_REGION)
+
+        // Below is a hack to work around a bug in credentials loading
+        // chain in smithy4s - we manually prioritise ECS credentials
+        case Some(_) =>
+          val provider = new AwsCredentialsProvider[IO]
+          provider
+            .refreshing(provider.fromECS(httpClient, 3.second))
+            .map: cred =>
+              AwsEnvironment.make(
+                httpClient,
+                IO.pure(AWS_REGION),
+                cred,
+                IO.realTime.map(_.toSeconds).map(Timestamp(_, 0))
+              )
 
   def comprehend: Resource[IO, Comprehend[IO]] =
     for
       httpClient <- EmberClientBuilder.default[IO].build
-      provider = new AwsCredentialsProvider[IO]
-      awsEnv <-
-        provider
-          .refreshing(provider.fromECS(httpClient, 3.second))
-          .map: cred =>
-            AwsEnvironment.make(
-              httpClient,
-              IO.pure(AwsRegion.US_EAST_1),
-              cred,
-              IO.realTime.map(_.toSeconds).map(Timestamp(_, 0))
-            )
+      awsEnv  <- awsEnvironment(httpClient)
       service <- AwsClient(Comprehend, awsEnv)
     yield service
 

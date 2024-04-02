@@ -14,13 +14,23 @@ import org.http4s.UrlForm
 import cats.syntax.all.*
 
 object Server extends IOApp.Simple:
-  
+
   val AWS_REGION = AwsRegion.US_EAST_1
 
   def run =
-    httpServer.use: server =>
-      IO.println(s"Running at: ${server.baseUri}") *>
-        IO.never
+    httpServer
+      .use: server =>
+        scribe.cats.io.info(s"Running at: ${server.baseUri}") *>
+          IO.never
+
+  import scribe.json.ScribeCirceJsonSupport
+  scribe.Logger.root
+    .orphan()
+    .clearHandlers()
+    .withHandler(
+      writer = ScribeCirceJsonSupport.writer(scribe.writer.ConsoleWriter)
+    )
+    .replace()
 
   def awsEnvironment(
       httpClient: org.http4s.client.Client[IO]
@@ -38,7 +48,14 @@ object Server extends IOApp.Simple:
         case Some(_) =>
           val provider = new AwsCredentialsProvider[IO]
           provider
-            .refreshing(provider.fromECS(httpClient, 3.second))
+            .refreshing(
+              provider
+                .fromECS(httpClient, 10.second)
+                .onError(exc =>
+                  scribe.cats.io
+                    .error("Failed to get credentials from ECS endpoint", exc)
+                )
+            )
             .map: cred =>
               AwsEnvironment.make(
                 httpClient,
@@ -50,8 +67,8 @@ object Server extends IOApp.Simple:
   def comprehend: Resource[IO, Comprehend[IO]] =
     for
       httpClient <- EmberClientBuilder.default[IO].build
-      awsEnv  <- awsEnvironment(httpClient)
-      service <- AwsClient(Comprehend, awsEnv)
+      awsEnv     <- awsEnvironment(httpClient)
+      service    <- AwsClient(Comprehend, awsEnv)
     yield service
 
   def httpServer =
@@ -85,12 +102,19 @@ object Server extends IOApp.Simple:
             form.get("text").headOption.map(_.trim).filter(_.nonEmpty) match
               case None =>
                 Ok(Html.error("Text cannot be empty"))
+
+              case Some(text) if text.length > 1024 =>
+                Ok(Html.error("Text cannot be longer than 1024 characters"))
+
               case Some(text) =>
                 comprehend
                   .detectSentiment(CustomerInputString(text), LanguageCode.EN)
                   .attempt
                   .flatMap:
-                    case Left(ex) => Ok(Html.error(ex.getMessage))
+                    case Left(ex) =>
+                      scribe.cats.io
+                        .error("Failed to detect sentiment for text", ex) *>
+                        Ok(Html.error("Some internal error has occurred"))
                     case Right(res) =>
                       res.sentiment match
                         case None => Ok(Html.error("No sentiment detected"))

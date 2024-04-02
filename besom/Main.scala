@@ -12,6 +12,7 @@ import besom.api.awsx.lb.ApplicationLoadBalancerArgs
 import besom.api.aws.ecs.inputs.ServiceNetworkConfigurationArgs
 import besom.api.aws.cloudwatch.LogGroupArgs
 import besom.json.*
+import besom.api.aws.ecs.inputs.ServiceLoadBalancerArgs
 
 @main def main = Pulumi.run {
   val repository =
@@ -41,7 +42,7 @@ import besom.json.*
   val logGroup =
     aws.cloudwatch.LogGroup(
       "sentiment-service-log-group",
-      LogGroupArgs(retentionInDays = 7, name = "log-group")
+      LogGroupArgs(retentionInDays = 7, name = "sentiment-service-logs")
     )
 
   val service =
@@ -56,6 +57,13 @@ import besom.json.*
               loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
           ),
           cluster = cluster.arn,
+          loadBalancers = List(
+            ServiceLoadBalancerArgs(
+              containerName = "sentiment-service",
+              containerPort = 80,
+              targetGroupArn = loadBalancer.defaultTargetGroup.arn
+            )
+          ),
           taskDefinitionArgs = FargateServiceTaskDefinitionArgs(
             containers = Map(
               "sentiment-service" -> TaskDefinitionContainerDefinitionArgs(
@@ -67,14 +75,14 @@ import besom.json.*
                 logConfiguration = TaskDefinitionLogConfigurationArgs(
                   logDriver = "awslogs",
                   options = JsObject(
-                    "awslogs-group"         -> JsString("log-group"),
-                    "awslogs-region"        -> JsString("us-east-1"),
+                    "awslogs-group"  -> JsString("sentiment-service-logs"),
+                    "awslogs-region" -> JsString("us-east-1"),
                     "awslogs-stream-prefix" -> JsString("ecs")
                   )
                 ),
                 portMappings = List(
                   TaskDefinitionPortMappingArgs(
-                    targetGroup = loadBalancer.defaultTargetGroup
+                    containerPort = 80
                   )
                 )
               )
@@ -83,11 +91,8 @@ import besom.json.*
         )
       )
 
-  Stack(logGroup).exports(
+  Stack(logGroup, service, vpc, cluster).exports(
     image = image.imageUri,
-    service = service,
-    vpc = vpc.id,
-    cluster = cluster.id,
     url = p"http://${loadBalancer.loadBalancer.dnsName}"
   )
 }

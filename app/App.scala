@@ -17,6 +17,9 @@ object Server extends IOApp.Simple:
 
   val AWS_REGION = AwsRegion.US_EAST_1
 
+  override protected def reportFailure(err: Throwable): IO[Unit] = 
+    scribe.cats.io.error("Unhandled error from Cats Effect runtime", err)
+
   def run =
     httpServer
       .use: server =>

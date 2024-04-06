@@ -9,7 +9,10 @@ import besom.api.aws
 import besom.api.aws.cloudwatch.LogGroupArgs
 import besom.api.aws.ecs.inputs.ServiceLoadBalancerArgs
 import besom.api.aws.ecs.inputs.ServiceNetworkConfigurationArgs
+import besom.api.aws.iam.RolePolicyAttachmentArgs
 import besom.api.awsx
+import besom.api.awsx.awsx.inputs.DefaultRoleWithPolicyArgs
+import besom.api.awsx.ecs.FargateTaskDefinitionArgs
 import besom.api.awsx.ecs.inputs.*
 import besom.api.awsx.lb.ApplicationLoadBalancerArgs
 import besom.json.*
@@ -50,53 +53,66 @@ import awsx.ecs
         LogGroupArgs(retentionInDays = 7, name = "sentiment-service-logs")
       )
 
-    val service =
-      image.imageUri.flatMap: image =>
-        ecs.FargateService(
-          "sentiment-service-fargate",
-          ecs.FargateServiceArgs(
-            networkConfiguration = ServiceNetworkConfigurationArgs(
-              subnets = vpc.publicSubnetIds,
-              assignPublicIp = true,
-              securityGroups =
-                loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
-            ),
-            cluster = cluster.arn,
-            loadBalancers = List(
-              ServiceLoadBalancerArgs(
-                containerName = "sentiment-service",
-                containerPort = 80,
-                targetGroupArn = loadBalancer.defaultTargetGroup.arn
+    val task = awsx.ecs.FargateTaskDefinition(
+      "sentiment-service-task",
+      FargateTaskDefinitionArgs(
+        containers = Map(
+          "sentiment-service" -> TaskDefinitionContainerDefinitionArgs(
+            image = image.imageUri,
+            name = "sentiment-service",
+            cpu = 128,
+            memory = 512,
+            essential = true,
+            logConfiguration = TaskDefinitionLogConfigurationArgs(
+              logDriver = "awslogs",
+              options = JsObject(
+                "awslogs-group"         -> JsString("sentiment-service-logs"),
+                "awslogs-region"        -> JsString("us-east-1"),
+                "awslogs-stream-prefix" -> JsString("ecs")
               )
             ),
-            taskDefinitionArgs = FargateServiceTaskDefinitionArgs(
-              containers = Map(
-                "sentiment-service" -> TaskDefinitionContainerDefinitionArgs(
-                  image = image,
-                  name = "sentiment-service",
-                  cpu = 128,
-                  memory = 512,
-                  essential = true,
-                  logConfiguration = TaskDefinitionLogConfigurationArgs(
-                    logDriver = "awslogs",
-                    options = JsObject(
-                      "awslogs-group"  -> JsString("sentiment-service-logs"),
-                      "awslogs-region" -> JsString("us-east-1"),
-                      "awslogs-stream-prefix" -> JsString("ecs")
-                    )
-                  ),
-                  portMappings = List(
-                    TaskDefinitionPortMappingArgs(
-                      containerPort = 80
-                    )
-                  )
-                )
+            portMappings = List(
+              TaskDefinitionPortMappingArgs(
+                containerPort = 80
               )
             )
           )
         )
+      )
+    )
 
-    Stack(logGroup, service, vpc, cluster).exports(
+    val policyAttachment = aws.iam.RolePolicyAttachment(
+      "sentiment-service-task-comprehend-policy",
+      RolePolicyAttachmentArgs(
+        role = task.taskRole.map(_.get), // TODO
+        policyArn = "arn:aws:iam::aws:policy/ComprehendReadOnly"
+      )
+    )
+
+    val service = aws.ecs.Service(
+      "sentiment-service",
+      aws.ecs.ServiceArgs(
+        launchType = "FARGATE",
+        taskDefinition = task.taskDefinition.arn,
+        cluster = cluster.arn,
+        desiredCount = 1,
+        networkConfiguration = ServiceNetworkConfigurationArgs(
+          subnets = vpc.publicSubnetIds,
+          assignPublicIp = true,
+          securityGroups =
+            loadBalancer.defaultSecurityGroup.map(_.map(_.id)).map(_.toList)
+        ),
+        loadBalancers = List(
+          ServiceLoadBalancerArgs(
+            containerName = "sentiment-service",
+            containerPort = 80,
+            targetGroupArn = loadBalancer.defaultTargetGroup.arn
+          )
+        )
+      )
+    )
+
+    Stack(logGroup, service, cluster, policyAttachment).exports(
       image = image.imageUri,
       url = p"http://${loadBalancer.loadBalancer.dnsName}"
     )

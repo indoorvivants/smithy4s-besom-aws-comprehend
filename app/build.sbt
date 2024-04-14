@@ -21,10 +21,10 @@ libraryDependencies ++= Seq(
   "org.http4s"  %% "http4s-ember-server" % V.http4s,
   "org.http4s"  %% "http4s-ember-client" % V.http4s,
   "org.http4s"  %% "http4s-scalatags"    % V.http4sScalatags,
+  "com.lihaoyi" %% "scalatags"           % V.scalatags,
   "com.outr"    %% "scribe-slf4j"        % V.scribe,
   "com.outr"    %% "scribe-cats"         % V.scribe,
   "com.outr"    %% "scribe-json-circe"   % V.scribe,
-  "com.lihaoyi" %% "scalatags"           % V.scalatags
 )
 
 Compile / smithy4sInputDirs += (ThisBuild / baseDirectory).value / "smithy"

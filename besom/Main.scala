@@ -17,21 +17,17 @@ import besom.api.awsx.ecs.inputs.*
 import besom.api.awsx.lb.ApplicationLoadBalancerArgs
 import besom.json.*
 
-import awsx.ecr
-import awsx.lb
-import awsx.ecs
-
 @main def main =
   Pulumi.run:
     val repository =
-      ecr.Repository(
+      awsx.ecr.Repository(
         "sentiment-service-repo",
-        ecr.RepositoryArgs(forceDelete = true)
+        awsx.ecr.RepositoryArgs(forceDelete = true)
       )
 
-    val image = ecr.Image(
+    val image = awsx.ecr.Image(
       "sentiment-service-image",
-      ecr.ImageArgs(
+      awsx.ecr.ImageArgs(
         repositoryUrl = repository.url,
         context = p"../app",
         platform = "linux/amd64"
@@ -40,7 +36,7 @@ import awsx.ecs
 
     val vpc = awsx.ec2.Vpc("sentiment-service-vpc")
 
-    val loadBalancer = lb.ApplicationLoadBalancer(
+    val loadBalancer = awsx.lb.ApplicationLoadBalancer(
       "sentiment-service-lb",
       ApplicationLoadBalancerArgs(subnetIds = vpc.publicSubnetIds)
     )
@@ -112,7 +108,7 @@ import awsx.ecs
       )
     )
 
-    Stack(logGroup, service, cluster, policyAttachment).exports(
+    Stack(repository, logGroup, service, cluster, policyAttachment).exports(
       image = image.imageUri,
       url = p"http://${loadBalancer.loadBalancer.dnsName}"
     )

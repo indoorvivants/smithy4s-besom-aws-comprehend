@@ -1,41 +1,68 @@
 import cats.effect.*
-import org.http4s.ember.client.EmberClientBuilder
-
-import smithy4s.aws.* // AWS specific interpreters // AWS specific interpreters
-import com.amazonaws.comprehend.* // Generated code from specs. // Generated code from specs.
-import scala.language.dynamics
-import scalatags.Text.TypedTag
+import cats.syntax.all.*
+import com.amazonaws.comprehend.*
+import com.comcast.ip4s.*
 import org.http4s.HttpApp
+import org.http4s.UrlForm
+import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.scalatags.*
-import com.comcast.ip4s.*
+import org.http4s.server
+import scalatags.Text.TypedTag
+import scribe.Logger
+import scribe.cats.io as log
+import scribe.json.ScribeJsonSupport
+import smithy4s.aws.*
+
 import scala.concurrent.duration.*
-import org.http4s.UrlForm
-import cats.syntax.all.*
+import scala.language.dynamics
 
 object Server extends IOApp.Simple:
 
-  val AWS_REGION = AwsRegion.US_EAST_1
+  val AWS_REGION           = AwsRegion.US_EAST_1
+  val AWS_ECS_ENV_VARIABLE = "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"
 
-  override protected def reportFailure(err: Throwable): IO[Unit] = 
-    scribe.cats.io.error("Unhandled error from Cats Effect runtime", err)
+  override protected def reportFailure(err: Throwable): IO[Unit] =
+    log.error("Unhandled error from Cats Effect runtime", err)
 
   def run =
-    httpServer
+    setLoggingToJSON
+      .productR(httpServer)
       .use: server =>
-        scribe.cats.io.info(s"Running at: ${server.baseUri}") *>
+        log.info(s"Running at: ${server.baseUri}") *>
           IO.never
 
-  import scribe.json.ScribeCirceJsonSupport
-  scribe.Logger.root
-    .orphan()
-    .clearHandlers()
-    .withHandler(
-      writer = ScribeCirceJsonSupport.writer(scribe.writer.ConsoleWriter)
-    )
-    .replace()
+  /* This resource sets global root logger to JSON format when the app is running on AWS ECS. When the resource is released, it returns the logger to previous state.
+      This is not necessarily best practice, instead you should create a separate logger and inject that  */
+  private def setLoggingToJSON: Resource[IO, Unit] =
+    import scribe.json.ScribeCirceJsonSupport
+    std
+      .Env[IO]
+      .get(AWS_ECS_ENV_VARIABLE)
+      .toResource
+      .flatMap:
+        case None => Resource.unit
+        case Some(_) =>
+          IO.ref(scribe.Logger.root.handlers)
+            .toResource
+            .flatMap: savedHandlers =>
+              Resource.make(
+                IO(
+                  Logger.root
+                    .clearHandlers()
+                    .withHandler(writer =
+                      ScribeCirceJsonSupport.writer(scribe.writer.ConsoleWriter)
+                    )
+                    .replace()
+                )
+              )(logger =>
+                savedHandlers.get
+                  .flatMap(handlers => IO(logger.copy(handlers = handlers)))
+              )
+      .void
+  end setLoggingToJSON
 
-  def awsEnvironment(
+  private def awsEnvironment(
       httpClient: org.http4s.client.Client[IO]
   ): Resource[IO, AwsEnvironment[IO]] =
     std
@@ -50,13 +77,13 @@ object Server extends IOApp.Simple:
         // chain in smithy4s - we manually prioritise ECS credentials
         case Some(_) =>
           val provider = new AwsCredentialsProvider[IO]
+
           provider
             .refreshing(
               provider
                 .fromECS(httpClient, 10.second)
                 .onError(exc =>
-                  scribe.cats.io
-                    .error("Failed to get credentials from ECS endpoint", exc)
+                  log.error("Failed to get credentials from ECS endpoint", exc)
                 )
             )
             .map: cred =>
@@ -67,15 +94,15 @@ object Server extends IOApp.Simple:
                 IO.realTime.map(_.toSeconds).map(Timestamp(_, 0))
               )
 
-  def comprehend: Resource[IO, Comprehend[IO]] =
+  private def comprehendService: Resource[IO, Comprehend[IO]] =
     for
       httpClient <- EmberClientBuilder.default[IO].build
       awsEnv     <- awsEnvironment(httpClient)
       service    <- AwsClient(Comprehend, awsEnv)
     yield service
 
-  def httpServer =
-    comprehend
+  private def httpServer: Resource[IO, server.Server] =
+    comprehendService
       .map(routes(_))
       .flatMap: routes =>
         EmberServerBuilder
@@ -91,10 +118,9 @@ object Server extends IOApp.Simple:
           .withShutdownTimeout(0.second)
           .build
 
-  def routes(comprehend: Comprehend[IO]) =
-    import org.http4s.dsl.io.*
-    import org.http4s.implicits.*
-    HttpApp[IO] { // ...
+  private def routes(comprehendService: Comprehend[IO]): HttpApp[IO] =
+    import org.http4s.*, dsl.io.*, implicits.*
+    HttpApp[IO]: // ...
       case GET -> Root =>
         Ok(Html.template(Html.userInput))
 
@@ -110,13 +136,12 @@ object Server extends IOApp.Simple:
                 Ok(Html.error("Text cannot be longer than 1024 characters"))
 
               case Some(text) =>
-                comprehend
+                comprehendService
                   .detectSentiment(CustomerInputString(text), LanguageCode.EN)
                   .attempt
                   .flatMap:
                     case Left(ex) =>
-                      scribe.cats.io
-                        .error("Failed to detect sentiment for text", ex) *>
+                      log.error("Failed to detect sentiment for text", ex) *>
                         Ok(Html.error("Some internal error has occurred"))
                     case Right(res) =>
                       res.sentiment match
@@ -124,9 +149,7 @@ object Server extends IOApp.Simple:
                         case Some(sentiment) => Ok(Html.sentiment(sentiment))
 
       case _ => NotFound()
-    }
   end routes
-
 end Server
 
 object Html:

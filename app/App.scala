@@ -1,3 +1,14 @@
+//> using scala 3.3.3
+//> using dep com.disneystreaming.smithy4s::smithy4s-aws-http4s::0.18.0-12-da4b23a
+//> using dep com.disneystreaming.smithy4s::smithy4s-http4s::0.18.0-12-da4b23a
+//> using dep org.http4s::http4s-ember-server::0.23.26
+//> using dep org.http4s::http4s-ember-client::0.23.26
+//> using dep org.http4s::http4s-scalatags::0.25.2
+//> using dep com.outr::scribe-cats::3.13.2
+//> using dep com.outr::scribe-json-circe::3.13.2
+//> using dep com.outr::scribe-slf4j::3.13.2
+//> using dep com.lihaoyi::scalatags::0.12.0
+
 import cats.effect.*
 import cats.syntax.all.*
 import com.amazonaws.comprehend.*
